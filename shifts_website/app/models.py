@@ -6,9 +6,17 @@ def extract_user_id(email: str) -> str:
     extract “First Last” as the display user_id.
     """
     local = email.split("@", 1)[0]       # "first.m.last.2X"
-    parts = local.split(".")[:3]         # ["first", "m", "last"]
-    first, _, last = parts
-    return f"{first.capitalize()} {last.capitalize()}"
+    parts = local.split(".")         # ["first", "m", "last"]
+    first = parts[0].capitalize()
+    last = ""
+    if len(parts) >= 3:
+        candidate = parts[-2]
+        if candidate.isalpha():
+            last = candidate.capitalize()
+    elif len(parts) == 2 and parts[1].isalpha():
+        last = parts[1].capitalize()
+
+    return f"{first} {last}"
 
 class User(db.Model):
     __tablename__ = "users"
@@ -17,13 +25,15 @@ class User(db.Model):
     email         = db.Column(db.String, unique=True, nullable=False)
     user_id       = db.Column(db.String, unique=True, nullable=False)
     shifts_worked = db.Column(db.Integer, default=0, nullable=False)
+    status        = db.Column(db.String(10), nullable=False, default='GENERAL')
 
     shifts = db.relationship("Shift", backref="user", cascade="all, delete-orphan")
     
-    def __init__(self, email, shifts_worked=0):
+    def __init__(self, email, shifts_worked=0, status="GENERAL"):
         self.email         = email
         self.user_id       = extract_user_id(email)
         self.shifts_worked = shifts_worked
+        self.status        = status
 
     def __repr__(self):
         return f"<User {self.user_id} ({self.email})>"

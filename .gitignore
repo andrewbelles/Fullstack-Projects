@@ -2,6 +2,8 @@
 **/build/
 **/.ignore/
 **/db.*
+**/logs/
+**/scripts/*
 
 .env
-
+.gitign

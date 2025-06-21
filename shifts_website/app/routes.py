@@ -23,13 +23,13 @@ def slot_to_time(slot: int) -> str:
 @login_required
 def index():
     db_id = session["user"]["db_id"]
+    user_status = session["user"]["status"]
 
     slots = list(range(FIRST_SLOT, TOTAL_SLOTS)) + list(range(0, LAST_SLOT + 1))
     times = {s: slot_to_time(s) for s in range(TOTAL_SLOTS)}
 
     today = date.today()
 
-    # build a nested dict so Jinja can do prefill[slot][loc]
     existing = Shift.query.filter_by(week=today).all()
     if existing is None:
         raise RuntimeError("Empty Schedule!")
@@ -40,13 +40,13 @@ def index():
             continue
         prefill.setdefault(s.slot, {})[s.location] = s.user.user_id
 
-
     return render_template(
         "index.html",
         slots=slots,
         times=times,
         locations=LOCATIONS,
         user_id=db_id,
+        user_status=user_status,
         prefill=prefill
     )
 
@@ -58,14 +58,20 @@ def submit_shifts():
     if not isinstance(shifts, list) or len(shifts) < 2:
         return jsonify(error="Pick at least two shifts"), 400
 
-    today   = date.today()
-    db_id   = session["user"]["db_id"]
+    today       = date.today()
+    db_id       = session["user"]["db_id"]
+    user_status = session["user"]["status"] 
 
     # remove their old picks for this week
     Shift.query.filter_by(week=today, user_id=db_id).delete()
 
     # insert the new ones
     for s in shifts:
+        
+        # Guard against under-20 picking bar on backend 
+        if user_status == "GENERAL" and s["location"].startswith("Bar"):
+            return jsonify(error="You are not allowed to pick Bar shifts")
+
         db.session.add(Shift(
             user_id=db_id,
             week=today,
@@ -74,8 +80,5 @@ def submit_shifts():
         ))
 
     db.session.commit()
-
-    # sanity-check in your console
-    print("JUST WROTE:", Shift.query.filter_by(user_id=db_id, week=today).all())
 
     return jsonify(success=True), 200

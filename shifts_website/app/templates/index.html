@@ -9,7 +9,10 @@
     href="{{ url_for('static', filename='css/style.css') }}"
   />
 </head>
-<body data-user-id="{{ user_id }}">
+<body 
+  data-user-id="{{ user_id }}"
+  data-user-status="{{ user_status }}"
+>
   <nav class="navbar">
     <div class="navbar-left">Shift Scheduler</div>
     <div class="navbar-right">
@@ -40,18 +43,31 @@
               {% set taker = prefill.get(slot, {}).get(loc) %}
               {% set is_bar = loc in ['Bar1','Bar2'] %}
 
+              {# already filled #}
               {% if taker %}
                 <div class="slot inactive" title="Taken by {{ taker }}">
                   {{ taker }}
                 </div>
 
-              {% elif is_bar 
+              {# GENERAL users may not pick any Bar shifts #}
+              {% elif is_bar and user_status == 'GENERAL' %}
+                <div class="slot inactive" title="You may not select Bar shifts">
+                </div>
+
+              {# time-of-day disabling for Bar (original logic) #}
+              {% elif is_bar
                     and not ((slot >= BAR_START1 and slot <= BAR_END1)
                              or (slot >= BAR_START2 and slot <= BAR_END2)) %}
-                <div class="slot inactive"></div>
+                <div class="slot inactive" title="Bar closed at this time">
+                </div>
 
+              {# otherwise this is an interactive pickable slot #}
               {% else %}
-                <div class="slot" data-slot="{{ slot }}" data-loc="{{ loc }}"></div>
+                <div 
+                  class="slot" 
+                  data-slot="{{ slot }}" 
+                  data-loc="{{ loc }}"
+                ></div>
               {% endif %}
             {% endfor %}
           {% endif %}

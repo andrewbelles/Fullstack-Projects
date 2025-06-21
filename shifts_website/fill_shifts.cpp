@@ -68,9 +68,10 @@ sqlerr(sqlite3* db, const char* msg) {
 void 
 fetch_users(sqlite3* db, 
             std::vector<int>& users, 
-            std::unordered_map<int, int>& counts) 
+            std::unordered_map<int, int>& counts,
+            std::unordered_map<int, std::string>& status_map) 
 {
-  const char* sql_users = "SELECT id FROM users;";  
+  const char* sql_users = "SELECT id, status FROM users;";  
   sqlite3_stmt* stmt = nullptr;  
   // Prepare users query
   if (sqlite3_prepare_v2(db, sql_users, -1, &stmt, nullptr) != SQLITE_OK)
@@ -79,8 +80,13 @@ fetch_users(sqlite3* db,
   // Pull users from query
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     int uid = sqlite3_column_int(stmt, 0);
+    const char* status = reinterpret_cast<const char*>(
+      sqlite3_column_text(stmt, 1)
+    );
     users.push_back(uid);
     counts[uid] = 0;
+    // Fall back to GENERAL if empty (shouldn't happen)
+    status_map[uid] = status ? status : "GENERAL";
   }
   sqlite3_finalize(stmt);
 
@@ -184,107 +190,11 @@ add_edge(std::vector<std::vector<Edge>>& graph,
   graph[v].push_back({u, static_cast<int>(graph[u].size()) - 1, 0, cost});
 }
 
-// Cost flow depth first search, to push flow units from vertex u to target 
-// Returns the amount that successfully pushed 
-int 
-dinic_dfs(int u, 
-          int target, 
-          int flow, 
-          std::vector<int>& level, 
-          std::vector<int>& iterator, 
-          std::vector<std::vector<Edge>>& graph)
-{
-  // Base case: reached sink and return the pushed flow 
-  if (u == target)
-    return flow; 
-
-  // Iterate over edges in graph, cache progress in iterator
-  for (int& i = iterator[u]; i < int32_t(graph[u].size()); i++) {
-    Edge &e = graph[u][i];
-    
-    // Only advance along edges with capacity and lead closer 
-    if (e.capacity > 0 && level[e.to] == level[u] + 1) {
-      // Try to push  
-      int pushed = dinic_dfs(
-        e.to, 
-        target, 
-        std::min(flow, e.capacity), 
-        level, 
-        iterator, 
-        graph
-      );
-      
-      if (pushed > 0) {
-        // Reduce capacity on forward edge 
-        e.capacity -= pushed; 
-        // Increase capacity on reverse edge
-        graph[e.to][e.reverse].capacity += pushed; 
-        return pushed; 
-      }
-    }
-  }
-  return 0;
-}
-
-// DFS helper function. Pushes neighbors of u onto qeue to build level graph 
-inline void 
-push_vertices(std::vector<std::vector<Edge>>& graph, 
-              std::queue<int>& flow_queue, 
-              std::vector<int>& level, 
-              int u) 
-{
-    for (auto &edge : graph[u]) {
-      // If neighbor hasn't been visited and edge has capacity 
-      if (level[edge.to] < 0 && edge.capacity > 0) {
-        level[edge.to] = level[u] + 1; 
-        flow_queue.push(edge.to);
-      }
-    }
-}
-
-// Returns the maximum flow from source to target 
-int 
-max_flow(int source, int target, std::vector<std::vector<Edge>>& graph) {
-  int flow = 0;
-  std::vector<int> level(graph.size()), iterator(graph.size());
-
-  while (true) {
-
-    // Build level graph 
-    std::fill(level.begin(), level.end(), -1); 
-    std::queue<int> flow_queue; 
-    flow_queue.push(source);
-    level[source] = 0;
-    while (!flow_queue.empty()) {
-      int u = flow_queue.front();
-      flow_queue.pop();
-      push_vertices(graph, flow_queue, level, u);
-    }
- 
-    // Check that sink is reached. If yes, continue augmenting paths  
-    if (level[target] < 0)
-      break;
-
-    // Find blocking flow in this level graph 
-    std::fill(iterator.begin(), iterator.end(), 0);
-    while(int pushed = dinic_dfs(
-      source, 
-      target, 
-      std::numeric_limits<int>::max(),
-      level, 
-      iterator, 
-      graph)) 
-    { 
-      flow += pushed; 
-    }
-  }
-  return flow;
-}
-
 // Build manifest based on logistic probability curve. 
 // Over time, higher shift count advantage lessens 
 void 
 build_manifest(std::vector<std::vector<Edge>>& graph,
+               const std::vector<int>& slots,
                const std::vector<int>& eligible, 
                const std::vector<std::pair<int, std::string>>& missing,
                const std::unordered_map<int, int>& capacity_map,
@@ -295,35 +205,52 @@ build_manifest(std::vector<std::vector<Edge>>& graph,
   // Get const sizes  
   const int eligible_count = eligible.size();
   const int missing_count  = missing.size();
+  const int slots_count    = slots.size();
   const int N = eligible_count + missing_count + 2;
   int source = 0;
   int first_user = 1; 
-  int first_slot = 1 + eligible_count;
-  int sink = N - 1 ;
+  int user_start = 1 + eligible_count;
+  int slot_start = user_start + eligible_count * slots_count;
+  int sink = slot_start + missing_count;
+
+  graph.assign(sink + 1, {});
 
   // Initialize graph 
   for (int i = 0; i < eligible_count; i++) {
     int uid = eligible[i];
-
     add_edge(graph, source, first_user + i, capacity_map.at(uid), 0);
   }
 
   for (int i = 0; i < eligible_count; i++) {
-    int uid  = eligible[i];
     int node = first_user + i;
-    int raw_cost = int(std::round(smoothing_factor * weights.at(uid) * COST_SCALE));
-    for (int j = 0; j < missing_count; j++) {
-      int slot = missing[j].first; 
-      if (uid_has_slot.count({uid, slot}))
-        continue; 
-
-      add_edge(graph, node, first_slot + j, 1, raw_cost);
+    for (int k = 0; k < slots_count; k++) {
+      int jnode = user_start + i * slots_count + k;
+      add_edge(graph, node, jnode, 1, 0);
     }
   }
 
-  for (int j = 0; j < missing_count; j++) {
-    add_edge(graph, first_slot + j, sink, 1, 0);
+  for (int i = 0; i < eligible_count; i++) {
+    int uid  = eligible[i];
+    
+    for (int j = 0; j < slots_count; j++) {
+      int slot_idx = slots[j];
+      int user_at_slot = user_start + i * slots_count + j;
+
+      for (int k = 0; k < missing_count; k++) {
+        if (missing[k].first != slot_idx)
+          continue; 
+
+        if (uid_has_slot.count({uid, slot_idx}))
+          continue;
+        
+        int cost = int(std::round(smoothing_factor * weights.at(uid)));
+        add_edge(graph, user_at_slot, slot_start + k, 1, cost);
+      }
+    }
   }
+
+  for (int j = 0; j < missing_count; j++) 
+    add_edge(graph, slot_start + j, sink, 1, 0);
 }
 
 // Finds the minimum-cost maximum flow from "source" to "sink" in a directed graph.
@@ -415,29 +342,30 @@ std::vector<Assignment>
 extract_matching(const std::vector<std::vector<Edge>>& graph,
                  const std::vector<int>& eligible,
                  const std::vector<std::pair<int, std::string>>& missing,
-                 int first_user,
-                 int first_slot)
+                 int slots_count,
+                 int user_start, 
+                 int slot_start)
 {
   const int eligible_count(eligible.size());
   const int missing_count(missing.size());
-
   std::vector<Assignment> result;
 
   for (int i = 0; i < eligible_count; i++) {
-    int uid  = eligible[i];
-    int node = first_user + i;
-
-    for (auto& edge : graph[node]) {
-      if (edge.to >= first_slot && edge.to < first_slot + missing_count) {
-        if (edge.capacity == 0) {
-          int slot_idx = edge.to - first_slot;
-          auto [slot, location] = missing[slot_idx];
-          result.push_back(Assignment(slot, location, uid));
+    int uid = eligible[i];
+    for (int j = 0; j < slots_count; j++) {
+      int node = user_start + i * slots_count + j;
+      for (const auto& edge : graph[node]) {
+        
+        if (edge.to >= slot_start 
+            && edge.to < slot_start + missing_count
+            && edge.capacity == 0)
+        {
+          auto [slot, location] = missing[edge.to - slot_start];
+          result.emplace_back(slot, location, uid);
         }
       }
     }
   }
-
   return result;
 }
 
@@ -456,6 +384,9 @@ is_fair(const std::vector<Assignment>& manifest,
   if (N == 0) 
     return true; 
 
+  double threshold = 0.20 + 0.30 / N;
+  threshold = (threshold > 1.0) ? 1.0 : threshold;
+
   double sum = 0.0; 
   for (auto& [_, capacity] : final_counts)
     sum += capacity; 
@@ -472,11 +403,90 @@ is_fair(const std::vector<Assignment>& manifest,
   }
 
   double gini = difference / (2.0 * N*N * mean);
-  return gini <= 0.25;
+  return gini <= threshold;
+}
+
+std::vector<Assignment>
+compute_flow(const std::vector<int>& slots,
+             const std::vector<int>& eligible,
+             const std::vector<std::pair<int, std::string>>& missing,
+             const std::unordered_map<int, int>& counts,
+             std::unordered_map<int, int>& capacity_map,
+             std::unordered_set<std::pair<int, int>, IntIntHash>& uid_has_slot,
+             const std::unordered_map<int, double>& weights,
+             double smoothing_factor,
+             bool verbose=false)
+{
+  // Setup local parameters 
+  const int slots_count    = int(slots.size());
+  const int eligible_count = int(eligible.size());
+  const int missing_count  = int(missing.size());
+
+  int source     = 0;
+  int first_user = 1;
+  int user_start = first_user + eligible_count;      
+  int slot_start = user_start + eligible_count * slots_count;
+  int sink       = slot_start + missing_count;
+  const int N          = sink + 1;
+  std::vector<std::vector<Edge>> graph(N);
+
+
+  // Data structure to hold the final manifest of slot, location, uid tuples
+  std::vector<Assignment> manifest; 
+  for (double smooth_factor = 0.0; smooth_factor <= 1.0 + tol; smooth_factor += 0.1) {
+    if (verbose)
+      std::cout << "Smoothing Factor: " << smooth_factor << '\n';
+
+    build_manifest(
+      graph,
+      slots,
+      eligible,
+      missing,
+      capacity_map,
+      uid_has_slot,
+      weights,
+      smooth_factor
+    );
+    
+    if (verbose)
+      std::cout << "Got manifest\n";
+
+    // Expecting std::pair<int, int> 
+    auto [flow, cost] = get_flow_and_cost(source, sink, graph);  
+    if (verbose)
+      std::cout << "Flow and Cost: " << "(" << flow << "," << cost << ")\n";
+
+    if (flow < missing_count) {
+      if (verbose)
+        std::cout << "Incomplete Flow\n";
+      continue;
+    }
+
+    // Get matching from cost 
+    std::vector<Assignment> matching = extract_matching(
+      graph,
+      eligible,
+      missing,
+      slots.size(),
+      user_start,
+      slot_start
+    ); 
+
+    // TODO: This is sloppy!
+    manifest = std::move(matching);
+    break;
+
+    // Check if fair enough and break early if so 
+    //if (is_fair(matching, counts)) {
+    //  manifest = std::move(matching);
+    //  break;
+    //}
+  }
+
+  return manifest; 
 }
 
 // Usage: ./fill_shifts <sql_path> <week> //opt <-v (verbos)>
-
 int 
 main(int argc, char* argv[]) {
   if (argc < 3) {
@@ -500,8 +510,9 @@ main(int argc, char* argv[]) {
 
   std::vector<int> users; 
   std::unordered_map<int, int> counts; 
+  std::unordered_map<int, std::string> status_map;
 
-  fetch_users(db, users, counts); 
+  fetch_users(db, users, counts, status_map); 
   
   // debug print 
   if (verbose) {
@@ -550,6 +561,8 @@ main(int argc, char* argv[]) {
   for (int slot = 0; slot < LAST_SLOT; slot++)
     slots.push_back(slot);
 
+  int slot_count = slots.size();
+
   for (int slot : slots) {
     for (auto& location : GENERAL) {
       if (assigned.count({slot, location}) != 0) 
@@ -565,12 +578,29 @@ main(int argc, char* argv[]) {
       missing.emplace_back(slot, location);
     }
   }
-
-  int missing_slots = missing.size();
+  
+  // Split missing by location 
+  std::vector<std::pair<int, std::string>> missing_bar, missing_general;
+  for (auto& empty_slot : missing) {
+    auto [slot, location] = empty_slot;
+    bool bar_location = (location == "Bar1" || location == "Bar2");
+   
+    // Split missing up. Do not push first hour into bar 
+    if (bar_location == false) {  
+      missing_general.push_back(empty_slot);
+    } else {
+      bool in_window1 = slot >= FIRST_SLOT + 2;
+      bool in_window2 = slot >= 0 && slot < LAST_SLOT;
+      if (in_window1 || in_window2) {
+        missing_bar.push_back(empty_slot);
+      }
+    }
+  }
 
   std::unordered_map<int, int> capacity_map; 
   std::vector<int> eligible;
 
+  // Get eligible users
   for (int uid : users) {
     if (assigned_uids.count(uid) == 0) {
       capacity_map[uid] = 2;
@@ -578,41 +608,17 @@ main(int argc, char* argv[]) {
     }
   }
 
-  int eligible_count(eligible.size());
-  int missing_count(missing.size());
-  int N = 2 + eligible_count + missing_count;
-  int source = 0, sink = N - 1, first_user = 1, first_slot = 1 + eligible_count;
-  std::vector<std::vector<Edge>> graph(N);
-
-  for (int i = 0; i < eligible_count; i++) 
-    add_edge(graph, source, first_user + i, capacity_map[eligible[i]]);
-
-
-  for (int i = 0; i < eligible_count; i++) {
-    int uid = eligible[i];
-
-    for (int j = 0; j < missing_count; j++) {
-      int slot = missing[j].first; 
-      if (uid_has_slot.count({uid, slot}) != 0)
-        continue;
-
-      add_edge(graph, first_user + i, first_slot + j, 1);
-    }
-  }
-  
-  for (int j = 0; j < missing_count; j++)
-    add_edge(graph, first_slot + j, sink, 1);
-
-  // Assert that there exists a solution
-  int flow = max_flow(source, sink, graph);
-  if (flow < missing_count) {
-    std::ofstream err("logs/error.log");
-    err << "Only " << flow << "of " << " slots can be filled\n";
-    return 1;
+  // Split eligible by location
+  std::vector<int> eligible_bar, eligible_general;
+  for (int uid : eligible) {
+    if (status_map[uid] == "BAR")
+      eligible_bar.push_back(uid);
+    else 
+      eligible_general.push_back(uid);
   }
 
+  std::unordered_map<int, double> weights;
   // Logistic weights
-  std::unordered_map<int, double> weights; 
   auto logistic_weight = [&max_count](int count) {
     double x   = static_cast<double>(count) / static_cast<double>(max_count);
     double raw = 1.0 / (1.0 + std::exp(10.0 * (x - 0.5)));
@@ -622,55 +628,49 @@ main(int argc, char* argv[]) {
   // Get logistic weights to give advantage to users who have worked more shifts
   for (int uid : eligible) 
     weights[uid] = -std::log(logistic_weight(counts[uid]));
-
-  // Data structure to hold the final manifest of slot, location, uid tuples
-  std::vector<Assignment> manifest; 
-  for (double smooth_factor = 0.0; smooth_factor <= 1.0 + tol; smooth_factor += 0.1) {
-    if (verbose)
-      std::cout << "Smoothing Factor: " << smooth_factor << '\n';
-    
-    // Start with empty graph 
-    graph.assign(N, {});
-
-    build_manifest(
-      graph, 
-      eligible,
-      missing,
-      capacity_map,
-      uid_has_slot,
-      weights,
-      smooth_factor
-    );
-    
-    if (verbose)
-      std::cout << "Got manifest\n";
-
-    // Expecting std::pair<int, int> 
-    auto [flow, cost] = get_flow_and_cost(source, sink, graph);  
-    if (verbose)
-      std::cout << "Flow and Cost: " << "(" << flow << "," << cost << ")\n";
-
-    // Get matching from cost 
-    std::vector<Assignment> matching = extract_matching(
-      graph,
-      eligible,
-      missing,
-      first_user,
-      first_slot
-    ); 
-
-    // Check if fair enough and break early if so 
-    if (is_fair(matching, counts)) {
-      manifest = std::move(matching);
-      break;
-    }
-  }
   
+  // Build bar manifest first 
+  auto bar_manifest = compute_flow(
+    slots,
+    eligible_bar,
+    missing_bar,
+    counts,
+    capacity_map,
+    uid_has_slot,
+    weights,
+    0.0,
+    verbose
+  ); 
+
+  // Remove bar workers from pool
+  for (auto& assignment : bar_manifest) {
+    capacity_map[assignment.user_id]--;
+    uid_has_slot.emplace(assignment.user_id, assignment.slot);
+  }
+
+  auto general_manifest = compute_flow(
+    slots,
+    eligible_general,
+    missing_general,
+    counts,
+    capacity_map,
+    uid_has_slot,
+    weights,
+    0.0,
+    verbose 
+  );
+
   // Merge the pre-selected manifest with the found manifest 
   filled.insert(
     filled.end(),
-    manifest.begin(),
-    manifest.end()
+    bar_manifest.begin(),
+    bar_manifest.end()
+  );
+
+  filled.insert(
+    filled.end(),
+    general_manifest.begin(),
+    general_manifest.end()
   );
 
   // Print final manifest for verbose 

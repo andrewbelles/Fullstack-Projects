@@ -12,7 +12,7 @@ def login():
 
 @bp.route("/callback")
 def callback():
-    _token = oauth.google.authorize_access_token()
+    _ = oauth.google.authorize_access_token()
     userinfo = oauth.google.userinfo()
 
     email = userinfo["email"]
@@ -32,6 +32,7 @@ def callback():
         "sub":   userinfo["sub"],
         "email": email,
         "name":  userinfo["name"],
+        "status": user.status
     }
     return redirect(url_for("main.index"))
 
@@ -48,10 +49,10 @@ def forbidden_page():
 def login_required(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        u = session.get("user")
-        # require the new schema
-        if not u or "db_id" not in u:
-            session.pop("user", None)      # drop bad cookie
+        u = session.get("user", {})
+        # if we don't have both db_id AND status, drop them back to login
+        if "db_id" not in u or "status" not in u:
+            session.pop("user", None)
             return redirect(url_for("auth.login"))
         return fn(*args, **kwargs)
     return wrapper
