@@ -1,0 +1,153 @@
+/* ─── CSS Variables — light mode ─────────────────────────── */
+:root {
+  --bg:        #fafafa;         /* lighter page background */
+  --text:      #1c1c1e;         /* slightly softened ink */
+  --accent:    #0096ff;         /* lighter Apple blue */
+  --grey:      #f8f8f8;         /* lighter card + header */
+  --border:    #e0e0e0;         /* subtle stroke, lighter */
+  --shadow:    0 16px 40px rgba(0,0,0,.04); /* softer shadow */
+  --radius-lg: 32px;           /* larger rounding */
+  --radius-md: 28px;
+  --radius-sm: 16px;
+  --duration:  .2s;
+}
+
+/* ─── Dark-mode overrides ─────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:     #1c1c1e;
+    --text:   #ececec;
+    --accent: #5ac8fa;          /* lighter iOS blue */
+    --grey:   #2c2c2e;
+    --border: #3e3e40;
+    --shadow: 0 16px 40px rgba(0,0,0,.40);
+  }
+}
+
+/* ─── Reset & base typography ─────────────────────────────── */
+*\,*::before\,*::after { box-sizing: border-box; }
+html       { font-size: 16px; }
+body       {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+
+/* ─── Navigation bar ──────────────────────────────────────── */
+.navbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 40px;
+  backdrop-filter: saturate(180%) blur(20px);
+  background: rgba(255,255,255,.85);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+@media (prefers-color-scheme: dark) {
+  .navbar { background: rgba(28,28,30,.85); }
+}
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+.btn-logout, #submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem;
+  padding: 14px 40px;
+  border: none;
+  border-radius: 36px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration) ease, transform var(--duration) ease;
+}
+.btn-logout:hover, #submit:hover { opacity: .85; transform: translateY(-2px); }
+
+#submit { margin: 48px auto 12px; display: block; border-radius: 36px; }
+
+/* ─── Responsive scroll wrapper ───────────────────────────── */
+.table-container { overflow-x: auto; padding: 32px 0; }
+
+/* ─── Card holding the grid ───────────────────────────────── */
+.card {
+  margin: 48px auto;
+  max-width: 1200px;
+  background: var(--grey);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ─── Schedule grid ───────────────────────────────────────── */
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(7, 1fr);
+  gap: 2px;
+  background: var(--border);
+  font-size: 1rem;
+}
+
+/* Headers & time labels */
+.head, .time {
+  background: var(--grey);
+  padding: 14px 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.head {
+  text-align: center;
+  /* square headers—card rounding handles outer corners */
+  border-radius: 0;
+  padding: 14px 18px;
+}
+.time { text-align: right; }
+
+/* ─── Slots ──────────────────────────────────────────────── */
+.slot {
+  min-height: 56px;
+  background: var(--bg);
+  border: 1px solid var(--grey);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .9rem;
+  cursor: pointer;
+  transition: background var(--duration) ease;
+  border-radius: 0;        /* square cells */
+}
+.slot:hover         { background: rgba(0,0,0,.03); }
+.slot.active        { background: var(--accent); border-color: var(--accent); color: #fff; }
+.slot.inactive      { background: var(--grey);  color: var(--text); cursor: default; }
+
+/* ─── Message line ───────────────────────────────────────── */
+.message { text-align: center; color: var(--text); margin-top: 12px; }
+
+/* ─── Info box ───────────────────────────────────────────── */
+.info-box {
+  max-width: 800px; margin: 0 auto 56px;
+  padding: 28px 36px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.info-box h3 { margin-top: 0; font-size: 1.3rem; } {
+  max-width: 800px; margin: 0 auto 56px;
+  padding: 28px 36px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.info-box h3 { margin-top: 0; font-size: 1.3rem; }

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shift Scheduler</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <link 
+    rel="stylesheet" 
+    href="{{ url_for('static', filename='css/style.css') }}"
+  />
+</head>
+<body data-user-id="{{ user_id }}">
+  <nav class="navbar">
+    <div class="navbar-left">Shift Scheduler</div>
+    <div class="navbar-right">
+      Logged in as {{ session.user.email }}
+      <a href="{{ url_for('auth.logout') }}" class="btn-logout">Logout</a>
+    </div>
+  </nav>
+
+  <div class="table-container">
+    <div class="card">
+      <div class="schedule-grid">
+        <!-- header corner -->
+        <div class="head"></div>
+        <!-- column headers -->
+        {% for loc in locations %}
+          <div class="head">{{ loc }}</div>
+        {% endfor %}
+
+        {% set BAR_START1, BAR_END1 = 46, 47 %}
+        {% set BAR_START2, BAR_END2 = 0, 1 %}
+
+        <!-- each slot-row -->
+        {% for slot in slots %}
+          {# skip slot 2 entirely #}
+          {% if slot != 2 %}
+            <div class="time">{{ times[slot] }}</div>
+            {% for loc in locations %}
+              {% set taker = prefill.get(slot, {}).get(loc) %}
+              {% set is_bar = loc in ['Bar1','Bar2'] %}
+
+              {% if taker %}
+                <div class="slot inactive" title="Taken by {{ taker }}">
+                  {{ taker }}
+                </div>
+
+              {% elif is_bar 
+                    and not ((slot >= BAR_START1 and slot <= BAR_END1)
+                             or (slot >= BAR_START2 and slot <= BAR_END2)) %}
+                <div class="slot inactive"></div>
+
+              {% else %}
+                <div class="slot" data-slot="{{ slot }}" data-loc="{{ loc }}"></div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div id="message" class="message"></div>
+  <button id="submit">Submit</button>
+
+  <div class="info-box">
+    <h3>Instructions — Read First</h3>
+    <p>
+      If you are selecting, you must select at least 2 shifts. You can select as many as you want beyond that.
+      If you do not select 2 shifts before Thursday, you may be randomly selected for a shift.
+      People who have recently worked door will have a reduced chance of being selected.
+    </p>
+  </div>
+
+  <script defer src="{{ url_for('static', filename='js/scheduler.js') }}"></script>
+</body>
+</html>
