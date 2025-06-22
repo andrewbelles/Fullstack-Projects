@@ -4,18 +4,31 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from authlib.integrations.flask_client import OAuth
 
-oauth = OAuth()
-db    = SQLAlchemy()
 load_dotenv()
 
-def create_app():
-    # bootstrap the Flask app, serving static files from app/static/
+oauth = OAuth()
+db    = SQLAlchemy()
+
+def create_app(test_config: dict | None = None):
+
     app = Flask(
         __name__,
-        static_folder="static",      # resolves to app/static/
-        template_folder="templates"  # resolves to app/templates/
+        instance_relative_config=True,
+        static_folder="static",
+        template_folder="templates"
     )
+
+    if test_config:
+        app.config.update(test_config)
+
     app.secret_key = os.getenv("FLASK_KEY")
+
+    # configure the database to live in app/db.sqlite3
+    db_path = os.path.join(app.root_path, "db.sqlite3")
+    app.config["SQLALCHEMY_DATABASE_URI"]        = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    db.init_app(app)
 
     # initialize OAuth
     oauth.init_app(app)
@@ -27,18 +40,6 @@ def create_app():
         client_kwargs={ "scope": "openid email profile" },
     )
 
-    # configure the database to live in app/db.sqlite3
-    db_path = os.path.join(app.root_path, "db.sqlite3")
-    app.config["SQLALCHEMY_DATABASE_URI"]        = f"sqlite:///{db_path}"
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-    # initialize and create tables
-    db.init_app(app)
-    with app.app_context():
-        db.create_all()
-
-    # delayed imports 
-    
     # register blueprints
     from .auth   import bp as auth_bp
     from .routes import bp as main_bp
@@ -47,6 +48,7 @@ def create_app():
 
     # get scheduler 
     from app.scheduler import init_scheduler
-    init_scheduler(app)
+    if not app.config.get("TESTING"):
+        init_scheduler(app)
 
     return app

@@ -69,9 +69,10 @@ void
 fetch_users(sqlite3* db, 
             std::vector<int>& users, 
             std::unordered_map<int, int>& counts,
+            std::unordered_map<int, std::string>& name_map,
             std::unordered_map<int, std::string>& status_map) 
 {
-  const char* sql_users = "SELECT id, status FROM users;";  
+  const char* sql_users = "SELECT id, email, user_id, status FROM users;";  
   sqlite3_stmt* stmt = nullptr;  
   // Prepare users query
   if (sqlite3_prepare_v2(db, sql_users, -1, &stmt, nullptr) != SQLITE_OK)
@@ -81,10 +82,15 @@ fetch_users(sqlite3* db,
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     int uid = sqlite3_column_int(stmt, 0);
     const char* status = reinterpret_cast<const char*>(
-      sqlite3_column_text(stmt, 1)
+      sqlite3_column_text(stmt, 3)
     );
+    const char* name   = reinterpret_cast<const char*>(
+      sqlite3_column_text(stmt, 2)
+    );
+
     users.push_back(uid);
     counts[uid] = 0;
+    name_map[uid] = name ? name : "";
     // Fall back to GENERAL if empty (shouldn't happen)
     status_map[uid] = status ? status : "GENERAL";
   }
@@ -152,7 +158,8 @@ delete_old_shifts(sqlite3* db,
 void 
 insert_manifest(sqlite3* db,
                 const std::string& week,
-                const std::vector<Assignment>& final_manifest)
+                const std::vector<Assignment>& final_manifest,
+                const std::unordered_map<int, std::string>& name_map)
 {
   const char* ins_query = "INSERT INTO shifts (user_id, week, slot, location) "
                           "VALUES (?, ?, ?, ?);";
@@ -456,6 +463,7 @@ compute_flow(const std::vector<int>& slots,
     if (verbose)
       std::cout << "Flow and Cost: " << "(" << flow << "," << cost << ")\n";
 
+    // Ensure we always have a complete solution 
     if (flow < missing_count) {
       if (verbose)
         std::cout << "Incomplete Flow\n";
@@ -510,9 +518,10 @@ main(int argc, char* argv[]) {
 
   std::vector<int> users; 
   std::unordered_map<int, int> counts; 
+  std::unordered_map<int, std::string> name_map; 
   std::unordered_map<int, std::string> status_map;
 
-  fetch_users(db, users, counts, status_map); 
+  fetch_users(db, users, counts, name_map, status_map); 
   
   // debug print 
   if (verbose) {
@@ -678,7 +687,7 @@ main(int argc, char* argv[]) {
     for (auto &a : filled) {
       std::cout << "slot " << a.slot
                 << " @ "   << a.location
-                << " → user " << a.user_id << "\n";
+                << " → user " << name_map[a.user_id] << "\n";
     }
   }
 

@@ -1,24 +1,47 @@
-#!/usr/bin/env python3
-import os
-import sqlite3
+"""
+Helper to reset shifts manually in case of fatal error.
+Prints every row it will delete, then wipes the table.
+"""
 
-def main():
-    # 1) Compute path to your app’s DB
-    here    = os.path.dirname(__file__)
-    db_path = os.path.join(here, "app", "db.sqlite3")   # <- same file your Flask app uses
-    if not os.path.exists(db_path):
-        print("❌ DB not found at", db_path)
-        return
+from sqlalchemy import text
+from app import create_app, db
 
-    # 2) Connect & delete all shifts
-    conn   = sqlite3.connect(db_path)
-    cur    = conn.cursor()
-    cur.execute("DELETE FROM shifts;")
-    deleted = cur.rowcount
-    conn.commit()
-    conn.close()
 
-    print(f"✅ Deleted {deleted} rows from shifts in {db_path}")
+def main() -> None:
+    app = create_app()
+
+    with app.app_context():
+        # 1) Preview rows -----------------------------------------------------------------
+        rows = db.session.execute(
+            text("SELECT id, user_id, week, slot, location FROM shifts")
+        ).fetchall()
+
+        if not rows:
+            print("No shifts to delete — table is already empty.")
+            return
+
+        print("Rows to be deleted:")
+        for r in rows:
+            # `r` is a SQLAlchemy Row; attribute access works
+            print(
+                f"  id={r.id:<3} "
+                f"user={r.user_id:<3} "
+                f"week={r.week} "
+                f"slot={r.slot:<2} "
+                f"loc={r.location}"
+            )
+
+        # 2) Delete rows ------------------------------------------------------------------
+        try:
+            result = db.session.execute(text("DELETE FROM shifts;"))
+            db.session.commit()
+            deleted = result.rowcount if hasattr(result, "rowcount") else "all"
+        except Exception as exc:  # noqa: BLE001  (generic CLI helper)
+            print(f"Error deleting shifts: {exc}")
+            return
+
+    print(f"Deleted {deleted} rows from shifts")
+
 
 if __name__ == "__main__":
     main()

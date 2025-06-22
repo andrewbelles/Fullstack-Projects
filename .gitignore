@@ -4,6 +4,10 @@
 **/db.*
 **/logs/
 **/scripts/*
+**/.venv/
+**/migrations/*
+
+alembic.ini
 
 .env
 .gitign
