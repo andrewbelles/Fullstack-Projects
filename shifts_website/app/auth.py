@@ -7,7 +7,7 @@ bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 @bp.route("/login")
 def login():
-    redirect_uri = url_for("auth.callback", _external=True)
+    redirect_uri = url_for("auth.callback", _external=True, _scheme="https")
     return oauth.google.authorize_redirect(redirect_uri)
 
 @bp.route("/callback")
