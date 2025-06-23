@@ -57,7 +57,7 @@ jobs:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
     - name: Start Cloud SQL Auth proxy
-      uses: google-github-actions/cloud-sql-proxy@v0
+      uses: google-github-actions/cloud-sql-proxy@v0.6.0
       with:
         instances: ${{ env.INSTANCE_CONNECTION_NAME }}
 
