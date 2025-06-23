@@ -43,9 +43,11 @@ jobs:
 
       - name: Load GCP key into env
         run: |
-          echo "GCP_SA_JSON<<EOF" >> $GITHUB_ENV
-          cat gcp/key.json      # your checked-in, git-ignored key
-          echo "EOF"             >> $GITHUB_ENV
+          cat <<EOF >> $GITHUB_ENV
+          GCP_SA_JSON<<EOF
+          $(cat gcp/key.json)
+          EOF
+          EOF
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
