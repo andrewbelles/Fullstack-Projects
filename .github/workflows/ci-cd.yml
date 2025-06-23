@@ -118,10 +118,5 @@ jobs:
             --platform managed \
             --region "$REGION" \
             --allow-unauthenticated \
-            --set-env-vars "DB_USER=${DB_USER},\
-            DB_PASS=${DB_PASS},\
-            DB_NAME=${DB_NAME},\
-            INSTANCE_CONNECTION_NAME=${INSTANCE_CONNECTION_NAME},\
-            GOOGLE_ID=${GOOGLE_ID},\
-            GOOGLE_SECRET=${GOOGLE_SECRET},\
-            FLASK_KEY=${FLASK_KEY}"
+            --service-account "shift-scheduler@${GCP_PROJECT}.iam.gserviceaccount.com" \
+            --set-env-vars "DB_USER=${DB_USER},DB_PASS=${DB_PASS},DB_NAME=${DB_NAME},INSTANCE_CONNECTION_NAME=${INSTANCE_CONNECTION_NAME},GOOGLE_ID=${GOOGLE_ID},GOOGLE_SECRET=${GOOGLE_SECRET},FLASK_KEY=${FLASK_KEY}"
