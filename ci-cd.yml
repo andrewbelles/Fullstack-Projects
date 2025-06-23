@@ -59,7 +59,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Seed users
-        run: python app/scripts/seed_users.py
+        run: python seed_users.py
 
       # Build, push & deploy
       - name: Configure Docker to use gcr.io
