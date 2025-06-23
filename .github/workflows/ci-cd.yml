@@ -6,8 +6,8 @@ on:
       - main
 
 permissions:
-  contents: read    # for actions/checkout
-  id-token: write   # to allow OIDC token minting
+  contents: read      # for actions/checkout
+  id-token: write     # to allow OIDC token minting
 
 jobs:
   build-test-deploy:
@@ -18,9 +18,7 @@ jobs:
         working-directory: shifts_website
 
     env:
-      # GCP project _ID_ (for service-account email)
       GCP_PROJECT:           ${{ secrets.INSTANCE }}
-      # GCP project _NUMBER_ (for the provider resource name)
       GCP_PROJECT_NUMBER:    ${{ secrets.GCP_PROJECT_NUMBER }}
       REGION:                us-central1
       SERVICE:               shift-scheduler
@@ -46,8 +44,9 @@ jobs:
       - name: Authenticate to GCP via OIDC
         uses: google-github-actions/auth@v2
         with:
-          # NOTE: must use the project NUMBER in the provider path
+          # MUST use the project _number_ here:
           workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/shift-pool/providers/github-actions
+          # And your SA’s full email (must exist in the project):
           service_account: shift-scheduler@${{ env.GCP_PROJECT }}.iam.gserviceaccount.com
           token_format: access_token
 
@@ -55,12 +54,11 @@ jobs:
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ env.GCP_PROJECT }}
-          install_components: "beta"
+          install_components: beta
 
       - name: Start Cloud SQL Proxy
         run: |
-          curl -fsSL \
-            https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 \
+          curl -fsSL https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 \
             -o cloud_sql_proxy && chmod +x cloud_sql_proxy
           ./cloud_sql_proxy -instances=${INSTANCE_CONNECTION_NAME}=tcp:5432 & sleep 5
 
@@ -88,4 +86,5 @@ jobs:
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
-            --set-env-vars DB_USER=${DB_USER},DB_PASS=${DB_PASS},DB_NAME=${DB_NAME},INSTANCE_CONNECTION_NAME=${INSTANCE_CONNECTION_NAME},GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}
+            --set-env-vars \
+DB_USER=${DB_USER},DB_PASS=${DB_PASS},DB_NAME=${DB_NAME},INSTANCE_CONNECTION_NAME=${INSTANCE_CONNECTION_NAME},GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}
