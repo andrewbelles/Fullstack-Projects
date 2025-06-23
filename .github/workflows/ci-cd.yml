@@ -89,7 +89,9 @@ jobs:
         run: alembic -c alembic.ini upgrade head
 
       - name: Write users.txt from secret
-        run: echo "${{ secrets.SEED_USERS }}" > .ignore/users.txt
+        run: |
+          mkdir -p .ignore                   # <─ make sure the folder exists
+          printf '%s\n' "${{ secrets.SEED_USERS }}" > .ignore/users.txt
 
       - name: Seed Users
         run: python seed_users.py
