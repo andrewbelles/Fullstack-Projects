@@ -15,7 +15,7 @@ jobs:
       id-token: write 
 
     env:
-      GOOGLE_PROJECT:           ${{ secrets.GOOGLE_PROJECT }}
+      INSTANCE:                 ${{ secrets.INSTANCE }}
       REGION:                   us-central1
       SERVICE:                  shift-scheduler
       DB_USER:                  ${{ secrets.DB_USER }}
@@ -37,14 +37,14 @@ jobs:
       - name: Authenticate to GCP via OIDC
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/${{ env.GOOGLE_PROJECT }}/locations/global/workloadIdentityPools/shift-pool/providers/github-actions
-          service_account: shift-scheduler@${{ env.GOOGLE_PROJECT }}.iam.gserviceaccount.com
+          workload_identity_provider: projects/${{ env.INSTANCE }}/locations/global/workloadIdentityPools/shift-pool/providers/github-actions
+          service_account: shift-scheduler@${{ env.INSTANCE }}.iam.gserviceaccount.com
           token_format: access_token
 
       - name: Install gcloud SDK (with beta)
         uses: google-github-actions/setup-gcloud@v1
         with:
-          project_id: ${{ env.GOOGLE_PROJECT }}
+          project_id: ${{ env.INSTANCE }}
           install_components: |
             beta
 
@@ -70,12 +70,12 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest
+          tags: gcr.io/${{ env.INSTANCE }}/${{ env.SERVICE }}:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image gcr.io/$GOOGLE_PROJECT/$SERVICE:latest \
+            --image gcr.io/$INSTANCE/$SERVICE:latest \
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
