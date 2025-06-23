@@ -30,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Set up Python 3.12
         uses: actions/setup-python@v4
         with:
           python-version: "3.12"
@@ -40,10 +40,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run unit tests
         run: pytest
 
-      # GCP Auth + Cloud SQL proxy
+      # Migrate & seed your production Cloud SQL database
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
@@ -54,15 +54,14 @@ jobs:
         with:
           instances: ${{ env.INSTANCE_CONNECTION_NAME }}
 
-      # Migrations + seed
       - name: Run Alembic migrations
         run: alembic upgrade head
 
       - name: Seed users
         run: python seed_users.py
 
-      # Build, push & deploy
-      - name: Configure Docker to use gcr.io
+      # Build & push your Docker image
+      - name: Configure Docker for GCR
         run: gcloud auth configure-docker --quiet
 
       - name: Build & Push Docker image
@@ -73,18 +72,19 @@ jobs:
           push: true
           tags: gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest
 
+      # Deploy to Cloud Run
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
-            --image gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest \
-            --platform managed \
-            --region ${{ env.REGION }} \
+            --image       gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest \
+            --platform    managed \
+            --region      ${{ env.REGION }} \
             --allow-unauthenticated \
             --set-env-vars \
-DB_USER=${{ env.DB_USER }},\
-DB_PASS=${{ env.DB_PASS }},\
-DB_NAME=${{ env.DB_NAME }},\
-INSTANCE_CONNECTION_NAME=${{ env.INSTANCE_CONNECTION_NAME }},\
-GOOGLE_ID=${{ secrets.GOOGLE_ID }},\
-GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},\
-FLASK_KEY=${{ secrets.FLASK_KEY }}
+              DB_USER=${{ env.DB_USER }},\
+              DB_PASS=${{ env.DB_PASS }},\
+              DB_NAME=${{ env.DB_NAME }},\
+              INSTANCE_CONNECTION_NAME=${{ env.INSTANCE_CONNECTION_NAME }},\
+              GOOGLE_ID=${{ secrets.GOOGLE_ID }},\
+              GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},\
+              FLASK_KEY=${{ secrets.FLASK_KEY }}
