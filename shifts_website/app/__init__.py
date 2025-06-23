@@ -23,9 +23,24 @@ def create_app(test_config: dict | None = None):
 
     app.secret_key = os.getenv("FLASK_KEY")
 
+    DB_USER  = os.getenv("DB_USER")
+    DB_PASS  = os.getenv("DB_PASS")
+    DB_NAME  = os.getenv("DB_NAME")
+    INSTANCE = os.getenv("INSTANCE_CONNECTION_NAME")
+
     # configure the database to live in app/db.sqlite3
-    db_path = os.path.join(app.root_path, "db.sqlite3")
-    app.config["SQLALCHEMY_DATABASE_URI"]        = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"postgresql+psycopg2://{DB_USER}:{DB_PASS}"
+        f"@localhost/{DB_NAME}"
+        f"?host=/cloudsql/{INSTANCE}"
+    )
+
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True, 
+        "pool_size": 5,
+        "max_overflow": 2
+    }
+
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)

@@ -1,8 +1,9 @@
 from datetime import datetime, time, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 from flask import (
-    Blueprint, render_template, request, jsonify, session
+    current_app, Blueprint, render_template, request, jsonify, session
 )
+from sqlalchemy import text 
 from sqlalchemy.orm import joinedload
 from .auth import login_required
 from . import db

@@ -1,0 +1,43 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtualenvs
+.venv/
+env/
+venv/
+
+# Dot-env secrets
+.env
+
+# Local SQLite DB
+db.sqlite3
+
+# Tests & pytest cache
+/tests/
+/pytest.ini
+/.pytest_cache/
+
+# Build artifacts & CMake stuff
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/fill_shifts
+/fill_shifts.cpp
+/logs/
+
+# Cloud SQL proxy binary
+cloud_sql_proxy
+
+# Local scripts you don't need in prod
+seed_users.py
+reset_shifts.py
+run.py
+
+# IDE configs / editor temp files
+.vscode/
+.idea/
+*.swp

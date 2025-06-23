@@ -8,6 +8,7 @@
 **/migrations/*
 
 alembic.ini
+cloud_sql_proxy
 
 .env
 .gitign
