@@ -76,7 +76,7 @@ jobs:
         run: |
           echo "PWD=$(pwd)"
           echo "---- found alembic.ini ----"
-          ls -l shifts_websit/alembic.ini || true
+          ls -l alembic.ini || true
           echo "---- dump [alembic] section ----"
           python - <<'PY'
           import configparser, textwrap
