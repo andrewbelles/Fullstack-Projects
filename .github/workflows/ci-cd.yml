@@ -70,7 +70,7 @@ jobs:
       - name: Run Alembic migrations
         env:
           DATABASE_URL: postgresql+psycopg2://${{ env.DB_USER }}:${{ env.DB_PASS }}@/${{ env.DB_NAME }}?host=/cloudsql/${{ env.INSTANCE_CONNECTION_NAME }}
-        run: alembic upgrade head
+        run: alembic -c alembic.ini upgrade head
 
       - name: Seed users
         run: python seed_users.py
