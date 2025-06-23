@@ -10,6 +10,9 @@ jobs:
     defaults:
       run:
         working-directory: shifts_website
+    permissions:
+      contents: read 
+      id-token: write 
 
     env:
       GOOGLE_PROJECT:           ${{ secrets.GOOGLE_PROJECT }}
