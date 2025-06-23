@@ -54,6 +54,11 @@ jobs:
         with:
           instances: ${{ env.INSTANCE_CONNECTION_NAME }}
 
+      - name: Debug: show files in workspace
+        run: |
+          echo "PWD is $(pwd)"
+          ls -R .
+
       - name: Run Alembic migrations
         run: alembic upgrade head
 
