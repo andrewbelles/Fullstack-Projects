@@ -1,14 +1,15 @@
 #include <cassert>
+#include <cstdlib> 
 #include <iostream> 
 #include <algorithm>
 #include <vector> 
 #include <unordered_map>
+#include <pqxx/pqxx>
 #include <unordered_set>
 #include <cmath>
 #include <string>
 #include <fstream> 
 #include <array>
-#include <sqlite3.h>
 #include <limits>
 #include <queue> 
 #include <cstdint>
@@ -53,134 +54,89 @@ constexpr double tol      = 1e-3;
 const std::array<std::string, 5> GENERAL = {"Front1","Front2","Side","Back","Runner"};
 const std::array<std::string, 2> BAR = {"Bar1", "Bar2"};
 
-// Wrapper to output given sqlite error to log 
 void 
-sqlerr(sqlite3* db, const char* msg) {
-  // TODO: Get date/time for error log file name 
-  std::ofstream err("logs/error.log");  
-  err << msg << " : " << sqlite3_errmsg(db) << '\n';
-  if (db) 
-    sqlite3_close(db);
-
-  std::exit(1);
-}
-
-void 
-fetch_users(sqlite3* db, 
+fetch_users(pqxx::connection& db, 
             std::vector<int>& users, 
             std::unordered_map<int, int>& counts,
             std::unordered_map<int, std::string>& name_map,
             std::unordered_map<int, std::string>& status_map) 
 {
-  const char* sql_users = "SELECT id, email, user_id, status FROM users;";  
-  sqlite3_stmt* stmt = nullptr;  
-  // Prepare users query
-  if (sqlite3_prepare_v2(db, sql_users, -1, &stmt, nullptr) != SQLITE_OK)
-    sqlerr(db, "Failed to prepare users query");
+  pqxx::work tx{db};
 
-  // Pull users from query
-  while (sqlite3_step(stmt) == SQLITE_ROW) {
-    int uid = sqlite3_column_int(stmt, 0);
-    const char* status = reinterpret_cast<const char*>(
-      sqlite3_column_text(stmt, 3)
-    );
-    const char* name   = reinterpret_cast<const char*>(
-      sqlite3_column_text(stmt, 2)
-    );
-
+  auto r1 = tx.exec(
+    "SELECT id, user_id, status FROM users;"
+  );
+  for (auto const& row : r1) {
+    int uid             = row["id"].as<int>();
+    std::string uid_str = row["user_id"].c_str();
+    std::string status  = row["status"].c_str();
+  
     users.push_back(uid);
-    counts[uid] = 0;
-    name_map[uid] = name ? name : "";
-    // Fall back to GENERAL if empty (shouldn't happen)
-    status_map[uid] = status ? status : "GENERAL";
+    counts[uid]     = 0;
+    name_map[uid]   = uid_str;
+    status_map[uid] = status;
   }
-  sqlite3_finalize(stmt);
 
-  const char* sql_counts = "SELECT user_id, COUNT(*)"
-                           "FROM shifts "
-                           "GROUP BY user_id;";
-  // Prepare counts query 
-  if (sqlite3_prepare_v2(db, sql_counts, -1, &stmt, nullptr) != SQLITE_OK)
-    sqlerr(db, "Failed to prepare counts query");
-
-  // Pull counts from query 
-  while(sqlite3_step(stmt) == SQLITE_ROW) {
-    int uid   = sqlite3_column_int(stmt, 0);
-    int count = sqlite3_column_int(stmt, 1);
-    counts[uid] = count;
+  auto r2 = tx.exec(
+    "SELECT user_id, COUNT(*) AS count "
+    "FROM shifts "
+    "GROUP BY user_id;"
+  );
+  for (auto const& row : r2) {
+    int uid     = row["user_id"].as<int>();
+    int count   = row["count"].as<int>();
+    counts[uid] = count; 
   }
-  sqlite3_finalize(stmt);
+  
+  tx.commit();
 }
 
 void 
-fetch_filled_shifts(sqlite3* db, 
+fetch_filled_shifts(pqxx::connection& db, 
                     const std::string& week, 
                     std::vector<Assignment>& filled) 
 {
-  const char* fill_query = "SELECT slot, location, user_id "
-                           "FROM shifts "
-                           "WHERE week = ?;";
-  sqlite3_stmt* stmt = nullptr; 
+  pqxx::work tx{db};
 
-  if (sqlite3_prepare_v2(db, fill_query, -1, &stmt, nullptr) != SQLITE_OK)
-    sqlerr(db, "Failed to prepare filled shifts query");
+  auto r = tx.exec_prepared("get_shifts", week);
 
-  if (sqlite3_bind_text(stmt, 1, week.c_str(), -1, SQLITE_STATIC) != SQLITE_OK) 
-    sqlerr(db, "Failed to bind week parameter");
-
-  while(sqlite3_step(stmt) == SQLITE_ROW) {
-    int slot = sqlite3_column_int(stmt, 0);
-    const char* location = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-    int uid  = sqlite3_column_int(stmt, 2);
-    filled.emplace_back(slot, std::string(location), uid);
+  for (auto const& row : r) {
+    int slot             = row["slot"].as<int>();
+    std::string location = row["location"].c_str();
+    int uid              = row["user_id"].as<int>();
+    filled.emplace_back(slot, location, uid);
   }
-  sqlite3_finalize(stmt);
+  
+  tx.commit();
 }
 
 void 
-delete_old_shifts(sqlite3* db, 
+delete_old_shifts(pqxx::connection& db, 
                   const std::string& week)
 {
-  const char* del_query = "DELETE FROM shifts WHERE week = ?;";
-  sqlite3_stmt* stmt = nullptr; 
+  pqxx::work tx{db};
 
-  if (sqlite3_prepare_v2(db, del_query, -1, &stmt, nullptr) != SQLITE_OK) {
-    sqlerr(db, "Failed to prepare delete statement");
-  }
-
-  sqlite3_bind_text(stmt, 1, week.c_str(), -1, SQLITE_STATIC); 
-  if (sqlite3_step(stmt) != SQLITE_DONE) {
-    sqlerr(db, "Failed to delete old shifts");
-  }
-  sqlite3_finalize(stmt);
+  tx.exec_prepared("del_shifts", week);
+  tx.commit();
 }
 
 void 
-insert_manifest(sqlite3* db,
+insert_manifest(pqxx::connection& db,
                 const std::string& week,
-                const std::vector<Assignment>& final_manifest,
-                const std::unordered_map<int, std::string>& name_map)
+                const std::vector<Assignment>& final_manifest)
 {
-  const char* ins_query = "INSERT INTO shifts (user_id, week, slot, location) "
-                          "VALUES (?, ?, ?, ?);";
-  sqlite3_stmt* stmt = nullptr;
-
-  if (sqlite3_prepare_v2(db, ins_query, -1, &stmt, nullptr) != SQLITE_OK) {
-    sqlerr(db, "Failed to prepare insert statement");
-  }
+  pqxx::work tx{db};
 
   for (auto& assignment : final_manifest) {
-    sqlite3_bind_int(stmt, 1, assignment.user_id);
-    sqlite3_bind_text(stmt, 2, week.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 3, assignment.slot);
-    sqlite3_bind_text(stmt, 4, assignment.location.c_str(), -1, SQLITE_STATIC);
-
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-      sqlerr(db, "Failed to insert shifts");
-    }
-    sqlite3_reset(stmt);
+    tx.exec_prepared("ins_shift",
+      assignment.user_id,
+      week,
+      assignment.slot,
+      assignment.location
+    );
   }
-  sqlite3_finalize(stmt);
+
+  tx.commit();
 }
 
 // Adds forward edge with given capacity and reverse edge with 0 capacity  
@@ -494,27 +450,48 @@ compute_flow(const std::vector<int>& slots,
   return manifest; 
 }
 
-// Usage: ./fill_shifts <sql_path> <week> //opt <-v (verbos)>
+// Usage: ./fill_shifts <week> //opt <-v (verbos)>
 int 
 main(int argc, char* argv[]) {
-  if (argc < 3) {
+  if (argc < 2) {
     std::ofstream err("logs/error.log");
     err << "Invalid usage\n";
     return 1; 
   }
 
-  const std::string sql_path = argv[1];
-  const std::string week     = argv[2]; 
-  bool verbose = false;
-
-  // Guard out of bounds. Leave verbose empty if omitted 
-  if (argc == 4) {
-    verbose = true; 
+  const char* database_url = std::getenv("DATABASE_URL");
+  if (!database_url) {
+    std::ofstream err("logs/error.log");
+    err << "Error: ENV not set\n";
+    return 1; 
   }
 
-  sqlite3* db = nullptr; 
-  if (sqlite3_open(sql_path.c_str(), &db) != SQLITE_OK) 
-    sqlerr(db, "Failed opening database");
+  pqxx::connection db{database_url};
+  const std::string week = argv[1]; 
+  bool verbose = false;
+
+  // Prepare queries 
+  //
+  
+  db.prepare("get_shifts",
+    "SELECT slot, location, user_id "
+    "FROM shifts "
+    "WHERE week = $1;"
+  );
+
+  db.prepare("del_shifts", 
+    "DELETE FROM shifts WHERE week = $1;"
+  );
+
+  db.prepare("ins_shift", 
+      "INSERT INTO shifts (user_id, week, slot, location) "
+      "VALUES ($1, $2, $3, $4);"
+  );
+
+  // Guard out of bounds. Leave verbose empty if omitted 
+  if (argc == 3) {
+    verbose = true; 
+  }
 
   std::vector<int> users; 
   std::unordered_map<int, int> counts; 
@@ -691,20 +668,9 @@ main(int argc, char* argv[]) {
     }
   }
 
-  char* errmsg = nullptr; 
-  if (sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, &errmsg) != SQLITE_OK) {
-    sqlerr(db, errmsg); 
-    return 1;
-  }
 
   delete_old_shifts(db, week);
   insert_manifest(db, week, filled);
 
-  if (sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &errmsg) != SQLITE_OK) {
-    sqlerr(db, errmsg);
-    return 1;
-  }
-
-  sqlite3_close(db);
   return 0;
 }
