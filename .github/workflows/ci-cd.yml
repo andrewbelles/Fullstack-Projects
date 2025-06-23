@@ -79,6 +79,9 @@ jobs:
             echo "waiting for proxy…" ; sleep 1
           done
 
+          echo "== sockets in /cloudsql =="
+          find /cloudsql -maxdepth 2 -type s
+
       # --- Alembic ---
       - name: Run Alembic migrations
         env:
