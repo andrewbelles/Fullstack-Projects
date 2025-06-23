@@ -97,8 +97,11 @@ jobs:
         run: python seed_users.py
 
       # ───────────────────────────────── Build & Deploy ────────────────────────────
-      - name: Authorise Docker with GCR
-        run: gcloud auth configure-docker --quiet
+      - name: Authorise Docker with Artifact Registry
+        run: |
+          # add both old GCR and new AR hostnames just in case
+          gcloud auth configure-docker gcr.io --quiet
+          gcloud auth configure-docker us-docker.pkg.dev --quiet
 
       - name: Build & push Docker image
         uses: docker/build-push-action@v4
