@@ -2,23 +2,22 @@ name: CI / CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
-    # if your code is really at the repo root, remove this entire defaults block
+    # Change or remove this block if your code is actually at repo-root
     defaults:
       run:
         working-directory: shifts_website
 
     permissions:
-      contents: read
-      id-token: write
+      contents: read       # checkout
+      id-token: write      # Workload Identity Federation / OIDC → GCP
 
-    env:
+    env:                   # handy env aliases for the whole job
       INSTANCE_CONNECTION_NAME: ${{ secrets.INSTANCE_CONNECTION_NAME }}
       DB_USER:                   ${{ secrets.DB_USER }}
       DB_PASS:                   ${{ secrets.DB_PASS }}
@@ -28,82 +27,73 @@ jobs:
       SERVICE:                   shift-scheduler
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      
+    #  Source + Python deps + tests
+    - name: Checkout repo
+      uses: actions/checkout@v3
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          echo "=== Installing Python dependencies ==="
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Install Python dependencies
+      run: |
+        echo "🔧 Installing deps"
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
-      - name: Run unit tests
-        run: |
-          echo "=== Running pytest ==="
-          pytest
+    - name: Run unit tests
+      run: |
+        echo "🧪 Running pytest"
+        pytest -q
 
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+    # ──────────────────────────────────────────────────────────────
+    #  GCP auth + Cloud-SQL Proxy → run Alembic & seed script
+    # ──────────────────────────────────────────────────────────────
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Start Cloud SQL Auth proxy
-        uses: google-github-actions/cloud-sql-proxy@v1
-        with:
-          instances: ${{ env.INSTANCE_CONNECTION_NAME }}
+    - name: Start Cloud SQL Auth proxy
+      uses: google-github-actions/cloud-sql-proxy@v1
+      with:
+        instances: ${{ env.INSTANCE_CONNECTION_NAME }}
 
-      - name: Debug: show files in workspace
-        run: |
-          echo "=== Debug: Current directory ==="
-          pwd
-          echo "=== Debug: Directory tree ==="
-          ls -R .
+    - name: Run Alembic migrations
+      run: |
+        echo "📜 alembic upgrade head"
+        alembic upgrade head
 
-      - name: Run Alembic migrations
-        run: |
-          echo "=== Running alembic upgrade head ==="
-          alembic upgrade head
+    - name: Seed users table
+      run: |
+        echo "🌱 Seeding users"
+        python seed_users.py
 
-      - name: Seed users
-        run: |
-          echo "=== Seeding users ==="
-          echo "Using seed_users.py in $(pwd)"
-          python seed_users.py
+    # ──────────────────────────────────────────────────────────────
+    #  Build container, push to GCR, deploy to Cloud Run
+    # ──────────────────────────────────────────────────────────────
+    - name: Authorise docker to push to Artifact Registry / GCR
+      run: gcloud auth configure-docker --quiet
 
-      - name: Configure Docker for GCR
-        run: |
-          echo "=== Configuring Docker for GCR ==="
-          gcloud auth configure-docker --quiet
+    - name: Build & push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: Dockerfile
+        push: true
+        tags: gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest
 
-      - name: Build & Push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest
-        run: echo "=== Docker build & push complete ==="
+    - name: Docker build finished
+      run: echo "🐳 Docker image pushed"
 
-      - name: Deploy to Cloud Run
-        run: |
-          echo "=== Deploying to Cloud Run ==="
-          echo "PROJECT: $GOOGLE_PROJECT, REGION: $REGION, SERVICE: $SERVICE"
-          gcloud run deploy $SERVICE \
-            --image       gcr.io/$GOOGLE_PROJECT/$SERVICE:latest \
-            --platform    managed \
-            --region      $REGION \
-            --allow-unauthenticated \
-            --set-env-vars \
-              DB_USER=$DB_USER, \
-              DB_PASS=$DB_PASS, \
-              DB_NAME=$DB_NAME, \
-              INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME, \
-              GOOGLE_ID=${{ secrets.GOOGLE_ID }}, \
-              GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }}, \
-              FLASK_KEY=${{ secrets.FLASK_KEY }}
-
+    - name: Deploy to Cloud Run
+      run: |
+        echo "🚀 Deploying $SERVICE to Cloud Run"
+        gcloud run deploy "$SERVICE" \
+          --image   "gcr.io/$GOOGLE_PROJECT/$SERVICE:latest" \
+          --platform managed \
+          --region  "$REGION" \
+          --allow-unauthenticated \
+          --set-env-vars "DB_USER=$DB_USER,DB_PASS=$DB_PASS,DB_NAME=$DB_NAME,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}"
