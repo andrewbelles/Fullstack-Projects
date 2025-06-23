@@ -38,10 +38,12 @@ jobs:
           service_account: shift-scheduler@${{ env.GOOGLE_PROJECT }}.iam.gserviceaccount.com
           token_format: access_token
 
-      - uses: google-github-actions/setup-gcloud@v1
+      - name: Install gcloud SDK (with beta)
+        uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ env.GOOGLE_PROJECT }}
-          install_components: "beta"
+          install_components: |
+            beta
 
       - name: Start Cloud SQL Proxy
         run: |
@@ -74,5 +76,4 @@ jobs:
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
-            --set-env-vars \
-DB_USER=$DB_USER,DB_PASS=$DB_PASS,DB_NAME=$DB_NAME,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}
+            --set-env-vars DB_USER=${DB_USER},DB_PASS=${DB_PASS},DB_NAME=${DB_NAME},INSTANCE_CONNECTION_NAME=${INSTANCE_CONNECTION_NAME},GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}
