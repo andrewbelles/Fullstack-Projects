@@ -74,14 +74,14 @@ jobs:
           ls -l alembic.ini || true
           echo "---- dump [alembic] section ----"
           python - <<'PY'
-      import configparser, pathlib, sys, textwrap, os
-      cfg = configparser.ConfigParser()
-      cfg.read('alembic.ini')
-      print(textwrap.dedent(f"""
-          script_location = {cfg.get('alembic', 'script_location', fallback=None)}
-          sqlalchemy.url  = {cfg.get('alembic', 'sqlalchemy.url',  fallback=None)}
-      """))
-      PY
+          import configparser, textwrap
+          cfg = configparser.ConfigParser()
+          cfg.read('alembic.ini')
+          print(textwrap.dedent(f"""
+              script_location = {cfg.get('alembic', 'script_location', fallback=None)}
+              sqlalchemy.url  = {cfg.get('alembic', 'sqlalchemy.url',  fallback=None)}
+          """))
+          PY
 
       - name: Run Alembic migrations
         env:
