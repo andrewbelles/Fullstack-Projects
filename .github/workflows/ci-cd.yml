@@ -2,79 +2,80 @@ name: CI / CD
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
-    # Change or remove this block if your code is actually at repo-root
     defaults:
       run:
         working-directory: shifts_website
 
     permissions:
-      contents: read       # checkout
-      id-token: write      # Workload Identity Federation / OIDC → GCP
+      contents: read
+      id-token: write
 
-    env:                   # handy env aliases for the whole job
-      INSTANCE_CONNECTION_NAME: ${{ secrets.INSTANCE_CONNECTION_NAME }}
+    env:
+      # pull from GitHub Secrets
       DB_USER:                   ${{ secrets.DB_USER }}
       DB_PASS:                   ${{ secrets.DB_PASS }}
       DB_NAME:                   ${{ secrets.DB_NAME }}
+      INSTANCE_CONNECTION_NAME:  ${{ secrets.INSTANCE_CONNECTION_NAME }}
       GOOGLE_PROJECT:            ${{ secrets.GOOGLE_PROJECT }}
       REGION:                    us-central1
       SERVICE:                   shift-scheduler
 
     steps:
-      
-    #  Source + Python deps + tests
-    - name: Checkout repo
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Python 3.12
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: "3.12"
 
     - name: Install Python dependencies
       run: |
-        echo "🔧 Installing deps"
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Run unit tests
-      run: |
-        echo "🧪 Running pytest"
-        pytest -q
+      run: pytest
 
-    # ──────────────────────────────────────────────────────────────
-    #  GCP auth + Cloud-SQL Proxy → run Alembic & seed script
-    # ──────────────────────────────────────────────────────────────
-    - name: Authenticate to Google Cloud
+    - name: Authenticate to GCP
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-    - name: Start Cloud SQL Auth proxy
-      uses: google-github-actions/cloud-sql-proxy@v0.6.0
+    - name: Install gcloud SDK + beta components
+      uses: google-github-actions/setup-gcloud@v1
       with:
-        instances: ${{ env.INSTANCE_CONNECTION_NAME }}
+        project_id: ${{ secrets.GOOGLE_PROJECT }}
+        install_components: "beta"
+
+    - name: Download Cloud SQL Proxy
+      run: |
+        curl -fsSL \
+          https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 \
+          -o cloud_sql_proxy
+        chmod +x cloud_sql_proxy
+
+    - name: Start Cloud SQL Proxy
+      run: |
+        ./cloud_sql_proxy \
+          -instances=${INSTANCE_CONNECTION_NAME}=tcp:5432 &
+        # give it a few seconds to spin up
+        sleep 5
 
     - name: Run Alembic migrations
-      run: |
-        echo "📜 alembic upgrade head"
-        alembic upgrade head
+      run: alembic upgrade head
 
-    - name: Seed users table
-      run: |
-        echo "🌱 Seeding users"
-        python seed_users.py
+    - name: Seed users
+      run: python seed_users.py
 
-    # ──────────────────────────────────────────────────────────────
-    #  Build container, push to GCR, deploy to Cloud Run
-    # ──────────────────────────────────────────────────────────────
-    - name: Authorise docker to push to Artifact Registry / GCR
+    - name: Configure Docker to push to GCR
       run: gcloud auth configure-docker --quiet
 
     - name: Build & push Docker image
@@ -85,15 +86,12 @@ jobs:
         push: true
         tags: gcr.io/${{ env.GOOGLE_PROJECT }}/${{ env.SERVICE }}:latest
 
-    - name: Docker build finished
-      run: echo "🐳 Docker image pushed"
-
     - name: Deploy to Cloud Run
       run: |
-        echo "🚀 Deploying $SERVICE to Cloud Run"
-        gcloud run deploy "$SERVICE" \
-          --image   "gcr.io/$GOOGLE_PROJECT/$SERVICE:latest" \
-          --platform managed \
-          --region  "$REGION" \
+        gcloud run deploy $SERVICE \
+          --image       gcr.io/$GOOGLE_PROJECT/$SERVICE:latest \
+          --platform    managed \
+          --region      $REGION \
           --allow-unauthenticated \
-          --set-env-vars "DB_USER=$DB_USER,DB_PASS=$DB_PASS,DB_NAME=$DB_NAME,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}"
+          --set-env-vars \
+DB_USER=$DB_USER,DB_PASS=$DB_PASS,DB_NAME=$DB_NAME,INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,GOOGLE_ID=${{ secrets.GOOGLE_ID }},GOOGLE_SECRET=${{ secrets.GOOGLE_SECRET }},FLASK_KEY=${{ secrets.FLASK_KEY }}
