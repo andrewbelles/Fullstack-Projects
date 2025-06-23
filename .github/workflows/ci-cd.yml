@@ -69,14 +69,16 @@ jobs:
       # ---------- Cloud SQL proxy ----------
       - name: Start Cloud SQL Proxy
         run: |
+          sudo mkdir -p /cloudsql                      # path in your URL
           curl -fsSL https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -o cloud_sql_proxy
           chmod +x cloud_sql_proxy
-          ./cloud_sql_proxy -instances=${INSTANCE_CONNECTION_NAME}=tcp:5432 &
+          ./cloud_sql_proxy \
+            -instances=${INSTANCE_CONNECTION_NAME}=unix:/cloudsql/${INSTANCE_CONNECTION_NAME} &
           sleep 5
 
       # ---------- DB migrations + seed ----------
-      - run: alembic upgrade head
-        name: Run Alembic migrations
+      - name: Run Alembic migrations
+        run: alembic upgrade head
 
       - run: python seed_users.py
         name: Seed users
