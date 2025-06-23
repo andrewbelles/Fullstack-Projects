@@ -88,6 +88,9 @@ jobs:
           DATABASE_URL: postgresql+psycopg2://${{ env.DB_USER }}:${{ env.DB_PASS }}@/${{ env.DB_NAME }}?host=/cloudsql/${{ env.INSTANCE_CONNECTION_NAME }}
         run: alembic -c alembic.ini upgrade head
 
+      - name: Seed Users
+        run: python seed_users.py
+
       # ───────────────────────────────── Build & Deploy ────────────────────────────
       - name: Authorise Docker with GCR
         run: gcloud auth configure-docker --quiet
@@ -95,7 +98,7 @@ jobs:
       - name: Build & push Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./shift_website
+          context: ./shifts_website
           file: ./shifts_website/Dockerfile
           push: true
           tags: gcr.io/${{ env.GCP_PROJECT }}/${{ env.SERVICE }}:latest
