@@ -44,6 +44,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest freezegun
 
+      - name: Verify working directory
+        run: |
+          pwd
+          ls -l
+
       - name: Authenticate to GCP via OIDC
         uses: google-github-actions/auth@v2
         with:
