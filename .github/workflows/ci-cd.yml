@@ -95,8 +95,8 @@ jobs:
       - name: Build & push Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: Dockerfile
+          context: ./shift_website
+          file: ./shifts_website/Dockerfile
           push: true
           tags: gcr.io/${{ env.GCP_PROJECT }}/${{ env.SERVICE }}:latest
 
