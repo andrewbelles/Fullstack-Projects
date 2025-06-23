@@ -19,7 +19,7 @@ jobs:
 
     env:
       # GCP project _ID_ (for service-account email)
-      GCP_PROJECT:           ${{ secrets.GOOGLE_PROJECT }}
+      GCP_PROJECT:           ${{ secrets.INSTANCE }}
       # GCP project _NUMBER_ (for the provider resource name)
       GCP_PROJECT_NUMBER:    ${{ secrets.GCP_PROJECT_NUMBER }}
       REGION:                us-central1
