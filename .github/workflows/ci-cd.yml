@@ -9,7 +9,6 @@ jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
 
-    # if your Flask app lives in a subfolder, adjust this; otherwise you can delete the entire defaults block
     defaults:
       run:
         working-directory: shifts_website
