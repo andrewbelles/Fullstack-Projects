@@ -44,7 +44,7 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_file: gcp/key.json 
+          credentials_json: gcp/key.json 
 
       - name: Install gcloud SDK (with beta)
         uses: google-github-actions/setup-gcloud@v1
