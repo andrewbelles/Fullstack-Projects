@@ -13,17 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      # ────── GCP project info ──────
       GCP_PROJECT:          ${{ secrets.INSTANCE }}
       GCP_PROJECT_NUMBER:   ${{ secrets.GCP_PROJECT_NUMBER }}
+      REGION:   us-central1
+      SERVICE:  shift-scheduler
 
-      REGION:  us-central1
-      SERVICE: shift-scheduler
-
+      # ────── Cloud SQL credentials ──────
       DB_USER:  ${{ secrets.DB_USER }}
       DB_PASS:  ${{ secrets.DB_PASS }}
       DB_NAME:  ${{ secrets.DB_NAME }}
       INSTANCE_CONNECTION_NAME: ${{ secrets.INSTANCE_CONNECTION_NAME }}
 
+      # ────── app-level secrets ──────
       GOOGLE_ID:     ${{ secrets.GOOGLE_ID }}
       GOOGLE_SECRET: ${{ secrets.GOOGLE_SECRET }}
       FLASK_KEY:     ${{ secrets.FLASK_KEY }}
@@ -44,11 +46,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest freezegun
 
-      - name: Verify working directory
-        run: |
-          pwd
-          ls -l
-
       - name: Authenticate to GCP via OIDC
         uses: google-github-actions/auth@v2
         with:
@@ -63,29 +60,30 @@ jobs:
           project_id: ${{ env.GCP_PROJECT }}
           install_components: beta
 
-    - name: Start Cloud SQL proxy (unix socket)
-      run: |
-        sudo mkdir -p /cloudsql
+      # ───────────────────────────────── Cloud SQL Proxy ────────────────────────────
+      - name: Start Cloud SQL proxy (unix-socket)
+        run: |
+          sudo mkdir -p /cloudsql
+          curl -fsSL https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -o cloud_sql_proxy
+          chmod +x cloud_sql_proxy
+          ./cloud_sql_proxy -instances=${INSTANCE_CONNECTION_NAME}=unix:/cloudsql/${INSTANCE_CONNECTION_NAME} &
+          # wait until socket appears (max ~20 s)
+          for i in {1..20}; do
+            test -S /cloudsql/${INSTANCE_CONNECTION_NAME}/.s.PGSQL.5432 && break
+            echo "waiting for proxy…" ; sleep 1
+          done
 
-        curl -fsSL https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 \
-             -o cloud_sql_proxy
-        chmod +x cloud_sql_proxy
-
-        ./cloud_sql_proxy -instances=${INSTANCE_CONNECTION_NAME}=unix:/cloudsql/${INSTANCE_CONNECTION_NAME} &
-        
-        for i in {1..20}; do
-          test -S /cloudsql/${INSTANCE_CONNECTION_NAME}/.s.PGSQL.5432 && break
-          echo "⏳ waiting for proxy…" ; sleep 1
-        done
-
+      # ───────────────────────────────── Alembic migrations ─────────────────────────
       - name: Run Alembic migrations
         env:
-          DATABASE_URL: "postgresql+psycopg2://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=/cloudsql/${INSTANCE_CONNECTION_NAME}"
+          DATABASE_URL: >-
+            postgresql+psycopg2://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=/cloudsql/${INSTANCE_CONNECTION_NAME}
         run: alembic -c alembic.ini upgrade head
 
       - name: Seed users
         run: python seed_users.py
 
+      # ───────────────────────────────── Build & Deploy ────────────────────────────
       - name: Authorise Docker with GCR
         run: gcloud auth configure-docker --quiet
 
