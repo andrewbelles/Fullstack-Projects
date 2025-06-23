@@ -106,12 +106,12 @@ jobs:
           context: ./shifts_website
           file: ./shifts_website/Dockerfile
           push: true
-          tags: gcr.io/${{ env.GCP_PROJECT }}/${{ env.SERVICE }}:latest
+          tags: us-docker.pkg.dev/${{ env.GCP_PROJECT }}/docker/${{ env.SERVICE }}:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image gcr.io/${GCP_PROJECT}/${SERVICE}:latest \
+            --image us-docker.pkg.dev/${GCP_PROJECT}/docker/${SERVICE}:latest \
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
