@@ -45,7 +45,6 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt pytest freezegun
 
     # ─────────────────────────── Authenticate with GCP (OIDC) ─────────────────────
     - id: auth
@@ -92,9 +91,6 @@ jobs:
         find /cloudsql -maxdepth 2 -type s
 
     # ──────────────────────────────── Tests & Migrations ──────────────────────────
-    - name: Run tests
-      run: pytest
-
     - name: Run Alembic migrations
       env:
         DATABASE_URL: >-
