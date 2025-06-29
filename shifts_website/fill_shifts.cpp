@@ -54,6 +54,38 @@ constexpr double tol      = 1e-3;
 const std::array<std::string, 5> GENERAL = {"Front1","Front2","Side","Back","Runner"};
 const std::array<std::string, 2> BAR = {"Bar1", "Bar2"};
 
+std::string 
+pqxx_url(const char* url) {
+  const std::string prefix{"postgresql+psycopg2://"};
+  std::string result(url);
+  
+  if (result.rfind(prefix, 0) == 0) {
+    result.replace(0, prefix.size(), "postgresql://");
+  }
+
+  auto scheme_pos = result.find("://");
+  if (scheme_pos != std::string::npos) {
+    auto rest = result.substr(scheme_pos + 3);
+    auto at = rest.find('@');
+    auto colon = rest.find(':');
+    if (colon != std::string::npos && colon < at) {
+      auto password = rest.substr(colon + 1, at - colon - 1);
+      if (password.find('#') != std::string::npos) {
+        std::string enc;
+        for (char c : password) {
+          if (c == '#')
+            enc += "%23";
+          else
+            enc += c;
+        }
+        rest.replace(colon + 1, at - colon - 1, enc);
+        result = result.substr(0, scheme_pos + 3) + rest;
+      }
+    }
+  }
+  return result;
+}
+
 void 
 fetch_users(pqxx::connection& db, 
             std::vector<int>& users, 
@@ -459,19 +491,21 @@ main(int argc, char* argv[]) {
     return 1; 
   }
 
-  const char* database_url = std::getenv("DATABASE_URL");
-  if (!database_url) {
+  const char* raw = std::getenv("DATABASE_URL");
+  std::string url = pqxx_url(raw);
+  std::cout << url << '\n';
+
+  if (!url.c_str()) {
     std::ofstream err("logs/error.log");
     err << "Error: ENV not set\n";
     return 1; 
   }
 
-  pqxx::connection db{database_url};
+  pqxx::connection db{url};
   const std::string week = argv[1]; 
   bool verbose = false;
 
   // Prepare queries 
-  //
   
   db.prepare("get_shifts",
     "SELECT slot, location, user_id "
